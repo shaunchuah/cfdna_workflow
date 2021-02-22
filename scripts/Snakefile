@@ -1,0 +1,29 @@
+import os
+
+sample_list = os.listdir("../data/4_identified_fastq")
+
+rule all:
+    input:
+        expand("../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq", sample_list=sample_list),
+        expand("../results/{sample_list}/nanoplot/merged_fastq/", sample_list=sample_list)
+
+# Merge all fastq files in preparation for analysis
+rule merge_fastqs:
+    input:
+        "../data/4_identified_fastq/{sample_list}/"
+    output: 
+        "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq"
+    shell:
+        "cat ../data/4_identified_fastq/{wildcards.sample_list}/*.fastq > {output}"
+
+# Run NanoPlot against the merged files for some initial metrics
+# Need to modify this to run on sequencing_summary.txt rather than the raw fastq.
+# Also install nanoplot on conda using pip install nanoplot and then pip install nanoplot --upgrade
+# rule nanoplot_merged_fastq:
+#     input: 
+#         "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq"
+#     output: 
+#         "../results/{sample_list}/nanoplot/merged_fastq/"
+#     shell:
+#         "NanoPlot --fastq {input} -o {output}"
+
