@@ -2,10 +2,42 @@ import os
 
 sample_list = os.listdir("../data/4_identified_fastq")
 
+# Reference genome files in .mmi format
+# get .mmi files from raw fasta reference using "minimap2 -d {output_reference.mmi} {input_reference_genome}.fa"
+reference_human_genome = "../data/0_reference_databases/hg38.mmi"
+reference_mito_genome = "../data/0_reference_databases/mito.mmi"
+kraken_database = "../data/0_reference_databases/k2_standard_8gb_20201202/"
+
 rule all:
     input:
-        expand("../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq", sample_list=sample_list),
-        expand("../results/{sample_list}/nanoplot/merged_fastq/", sample_list=sample_list)
+        # INITIAL FILE PROCESSING AND MAPPING
+        expand("../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq", sample_list=sample_list), # Merge all initial fastq files
+        expand("../data/5_alignments/human_genome/{sample_list}.sam", sample_list=sample_list), # Map against human genome        
+        expand("../data/6_mapped_reads/human_mapped/{sample_list}-mapped.fastq", sample_list=sample_list), # Split aligned file into mapped bam file...
+        expand("../data/7_unmapped_reads/human_unmapped/{sample_list}-unmapped.fastq", sample_list=sample_list), #...and unmapped bam file
+
+        # FLAGSTAT ANALYSIS
+        expand("../results/{sample_list}/{sample_list}-human_alignment_stats.txt", sample_list=sample_list), # Flagstat against human-aligned merged file
+        expand("../results/{sample_list}/{sample_list}-mapped-flagstat.txt", sample_list=sample_list), # Flagstat against human-mapped-reads
+        expand("../results/{sample_list}/{sample_list}-unmapped-flagstat.txt", sample_list=sample_list), # Flagstat against human-unmapped-reads
+
+        # KRAKEN2 ANALYSIS
+        expand("../results/{sample_list}/{sample_list}-unmapped-kraken-report.txt", sample_list=sample_list),
+        expand("../results/{sample_list}/{sample_list}-unmapped-kraken.out", sample_list=sample_list),
+        
+        # NANOPLOT ANALYSIS - there seems to be issues with nanoplot running... might have to do this manually.
+
+        #expand("../results/{sample_list}/initial_demultiplexed_nanoplot/", sample_list=sample_list), #NanoPlot analysis on initial demultiplexed and debarcoded file
+
+
+
+
+
+
+################# SNAKEMAKE RULES ########################
+
+
+
 
 # Merge all fastq files in preparation for analysis
 rule merge_fastqs:
@@ -23,7 +55,92 @@ rule merge_fastqs:
 #     input: 
 #         "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq"
 #     output: 
-#         "../results/{sample_list}/nanoplot/merged_fastq/"
+#         "../results/{sample_list}/initial_demultiplexed_nanoplot/"
 #     shell:
 #         "NanoPlot --fastq {input} -o {output}"
 
+#### HUMAN GENOME WORKFLOW ####
+
+# Minimap2 against human genome
+rule map_human_genome:
+    input:
+        fastq_file = "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq",
+        database = reference_human_genome,
+    output:
+        "../data/5_alignments/human_genome/{sample_list}.sam"
+    shell:
+        "minimap2 -ax sr {input.database} {input.fastq_file} > {output}"
+
+# Samtools on aligned human genome
+rule samtools_flagstat:
+    input:
+        "../data/5_alignments/human_genome/{sample_list}.sam"
+    output:
+        "../results/{sample_list}/{sample_list}-human_alignment_stats.txt"
+    shell:
+        "samtools flagstat {input} > {output}"
+
+# Split files into align and unaligned and make fastq versions of those files
+rule split_by_mappings:
+    input:
+        "../data/5_alignments/human_genome/{sample_list}.sam"
+    output:
+        mapped = "../data/6_mapped_reads/human_mapped/{sample_list}-mapped.bam",
+        unmapped = "../data/7_unmapped_reads/human_unmapped/{sample_list}-unmapped.bam"
+    shell:
+        """
+        samtools view -bf 4 {input} > {output.unmapped}
+        samtools view -bF 4 {input} > {output.mapped}
+        """
+
+rule convert_bamtofastq:"../results/{sample_list}/{sample_list}-mapped-flagstat.txt"
+    input:
+        mapped = "../data/6_mapped_reads/human_mapped/{sample_list}-mapped.bam",
+        unmapped = "../data/7_unmapped_reads/human_unmapped/{sample_list}-unmapped.bam"
+    output:
+        mapped = "../data/6_mapped_reads/human_mapped/{sample_list}-mapped.fastq",
+        unmapped = "../data/7_unmapped_reads/human_unmapped/{sample_list}-unmapped.fastq",
+    shell:
+        """
+        bedtools bamtofastq -i {input.mapped} -fq {output.mapped}
+        bedtools bamtofastq -i {input.unmapped} -fq {output.unmapped}
+        """
+
+rule flagstat_on_mappings:
+    input: 
+        mapped = "../data/6_mapped_reads/human_mapped/{sample_list}-mapped.bam",
+        unmapped = "../data/7_unmapped_reads/human_unmapped/{sample_list}-unmapped.bam"
+    output:
+        mapped = "../results/{sample_list}/{sample_list}-mapped-flagstat.txt",
+        unmapped = "../results/{sample_list}/{sample_list}-unmapped-flagstat.txt"
+    shell:
+        """
+        samtools flagstat {input.mapped} > {output.mapped}
+        samtools flagstat {input.unmapped} > {output.unmapped}
+        """
+
+# Run kraken2 against unmapped fastq files
+rule kraken2_report:
+    input: 
+        unmapped_fastq = "../data/7_unmapped_reads/human_unmapped/{sample_list}-unmapped.fastq",
+        database = kraken_database 
+    output:
+        kraken_report = "../results/{sample_list}/{sample_list}-unmapped-kraken-report.txt",
+        kraken_output = "../results/{sample_list}/{sample_list}-unmapped-kraken.out"
+    log:
+        "../logs/kraken2/{sample_list}.log"
+    shell:
+        "kraken2 --db {input.database} --report {output.kraken_report} --output {output.kraken_output} --threads 4 --use-names {input.unmapped_fastq}"
+
+
+#### MITOCHONDRIAL GENOME WORKFLOW ####
+
+# Minimap2 against mitochondrial genome
+rule map_mito_genome:
+    input:
+        fastq_file = "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq",
+        database = reference_mito_genome,
+    output:
+        "../data/5_alignments/mitochondrial_genome/{sample_list}.sam"
+    shell:
+        "minimap2 -ax sr {input.database} {input.fastq_file} > {output}"

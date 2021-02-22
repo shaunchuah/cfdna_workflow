@@ -1,0 +1,4 @@
+snakemake
+nanoplot
+minimap2
+samtools
