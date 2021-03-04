@@ -1,3 +1,10 @@
 /scripts/.snakemake
 /results
-/data
+/data/0_reference_databases/
+/data/1_raw/
+/data/2_basecall_output/
+/data/3_demultiplexed_output/
+/data/4_identified_fastq/
+/data/5_alignments/
+/data/6_mapped_reads/
+/data/7_unmapped_reads/
