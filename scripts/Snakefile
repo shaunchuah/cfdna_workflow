@@ -6,7 +6,7 @@ sample_list = os.listdir("../data/4_identified_fastq")
 # get .mmi files from raw fasta reference using "minimap2 -d {output_reference.mmi} {input_reference_genome}.fa"
 reference_human_genome = "../data/0_reference_databases/hg38.mmi"
 reference_mito_genome = "../data/0_reference_databases/mito.mmi"
-kraken_database = "../data/0_reference_databases/k2_standard_8gb_20201202/"
+kraken_database = "../data/0_reference_databases/k2_standard_16gb_20201202/"
 
 rule all:
     input:
@@ -26,7 +26,7 @@ rule all:
         expand("../results/{sample_list}/{sample_list}-unmapped-kraken.out", sample_list=sample_list),
         
         # NANOPLOT ANALYSIS - there seems to be issues with nanoplot running... might have to do this manually.
-
+        expand("../data/4_identified_fastq/{sample_list}/{sample_list}_nanoplot_output/", sample_list=sample_list),
         #expand("../results/{sample_list}/initial_demultiplexed_nanoplot/", sample_list=sample_list), #NanoPlot analysis on initial demultiplexed and debarcoded file
 
 
@@ -144,3 +144,12 @@ rule map_mito_genome:
         "../data/5_alignments/mitochondrial_genome/{sample_list}.sam"
     shell:
         "minimap2 -ax sr {input.database} {input.fastq_file} > {output}"
+
+# NanoPlot Demultiplexed Samples
+rule nanoplot_demultiplexed_samples:
+    input:
+        "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq"
+    output:
+        "../results/{sample_list}/{sample_list}_nanoplot_output/"
+    shell:
+        "NanoPlot --fastq {input} -o {output}"
