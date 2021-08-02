@@ -1,6 +1,7 @@
 import os
 
 sample_list = os.listdir("../data/4_identified_fastq")
+report_list = os.listdir("../results/")
 
 # Reference genome files in .mmi format
 # get .mmi files from raw fasta reference using "minimap2 -d {output_reference.mmi} {input_reference_genome}.fa"
@@ -11,7 +12,7 @@ kraken_database = "../data/0_reference_databases/k2_standard_16gb_20201202/"
 rule all:
     input:
         # INITIAL FILE PROCESSING AND MAPPING
-        expand("../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq", sample_list=sample_list), # Merge all initial fastq files
+        expand("../data/4_identified_fastq/{sample_list}/merged/{sample_list}-merged.fastq", sample_list=sample_list), # Merge all initial fastq files
         expand("../data/5_alignments/human_genome/{sample_list}.sam", sample_list=sample_list), # Map against human genome        
         expand("../data/6_mapped_reads/human_mapped/{sample_list}-mapped.fastq", sample_list=sample_list), # Split aligned file into mapped bam file...
         expand("../data/7_unmapped_reads/human_unmapped/{sample_list}-unmapped.fastq", sample_list=sample_list), #...and unmapped bam file
@@ -24,9 +25,10 @@ rule all:
         # KRAKEN2 ANALYSIS
         expand("../results/{sample_list}/{sample_list}-unmapped-kraken-report.txt", sample_list=sample_list),
         expand("../results/{sample_list}/{sample_list}-unmapped-kraken.out", sample_list=sample_list),
-        
+        expand("../results/{report_list}/{report_list}-bracken.report", report_list=report_list),
+
         # NANOPLOT ANALYSIS - there seems to be issues with nanoplot running... might have to do this manually.
-        expand("../data/4_identified_fastq/{sample_list}/{sample_list}_nanoplot_output/", sample_list=sample_list),
+        # expand("../results/{sample_list}/{sample_list}_nanoplot_output/", sample_list=sample_list),
         #expand("../results/{sample_list}/initial_demultiplexed_nanoplot/", sample_list=sample_list), #NanoPlot analysis on initial demultiplexed and debarcoded file
 
 
@@ -44,7 +46,7 @@ rule merge_fastqs:
     input:
         "../data/4_identified_fastq/{sample_list}/"
     output: 
-        "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq"
+        "../data/4_identified_fastq/{sample_list}/merged/{sample_list}-merged.fastq"
     shell:
         "cat ../data/4_identified_fastq/{wildcards.sample_list}/*.fastq > {output}"
 
@@ -64,7 +66,7 @@ rule merge_fastqs:
 # Minimap2 against human genome
 rule map_human_genome:
     input:
-        fastq_file = "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq",
+        fastq_file = "../data/4_identified_fastq/{sample_list}/merged/{sample_list}-merged.fastq",
         database = reference_human_genome,
     output:
         "../data/5_alignments/human_genome/{sample_list}.sam"
@@ -133,12 +135,24 @@ rule kraken2_report:
         "kraken2 --db {input.database} --report {output.kraken_report} --output {output.kraken_output} --threads 4 --use-names {input.unmapped_fastq}"
 
 
+rule bracken_report:
+    input:
+        kraken_report = "../results/{report_list}/{report_list}-unmapped-kraken-report.txt",
+        database = kraken_database
+    output:
+        "../results/{report_list}/{report_list}-unmapped-kraken-report_bracken_species.txt",
+        bracken_report = "../results/{report_list}/{report_list}-bracken.report"
+    shell:
+        """
+        bracken -d {input.database} -i {input.kraken_report} -o {output.bracken_report}
+        """
+
 #### MITOCHONDRIAL GENOME WORKFLOW ####
 
 # Minimap2 against mitochondrial genome
 rule map_mito_genome:
     input:
-        fastq_file = "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq",
+        fastq_file = "../data/4_identified_fastq/{sample_list}/merged/{sample_list}-merged.fastq",
         database = reference_mito_genome,
     output:
         "../data/5_alignments/mitochondrial_genome/{sample_list}.sam"
@@ -148,7 +162,7 @@ rule map_mito_genome:
 # NanoPlot Demultiplexed Samples
 rule nanoplot_demultiplexed_samples:
     input:
-        "../data/4_identified_fastq/{sample_list}/{sample_list}-merged.fastq"
+        "../data/4_identified_fastq/{sample_list}/merged/{sample_list}-merged.fastq"
     output:
         "../results/{sample_list}/{sample_list}_nanoplot_output/"
     shell:

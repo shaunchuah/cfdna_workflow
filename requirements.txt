@@ -2,3 +2,5 @@ snakemake
 nanoplot
 minimap2
 samtools
+kraken2
+bracken
